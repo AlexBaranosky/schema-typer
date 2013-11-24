@@ -1,64 +1,77 @@
 (ns circle.schema-typer-test
-  (:import (clojure.lang Keyword))
   (:require [clojure.test :refer :all]
             [clojure.core.typed :as t]
             [schema.core :as s]
-            [circle.schema-typer :as st]))
+            [circle.schema-typer :as st])
+  (:import (clojure.lang Keyword)))
 
-(defn is-equiv
-  "Takes a value, a schema and a *quoted* type, i.e. '(HMap :mandatory ...). Asserts that v passes both schema and type"
-  [v s t]
-  (is (s/validate s v))
-  (is (t/check-form* v t))
-  (is (t/check-form* v (st/schema->type s))))
+(defmacro is-equiv [val schema type]
+  `(do
+     (is (s/validate ~schema ~val))
+     (is (t/check-form* ~val ~type))
+     (is (t/check-form* ~val (st/schema->type ~schema)))))
 
-(deftest numbers-work
-  (is-equiv 3 s/Number 'java.lang.Number))
+(deftest schema-type-equivalence
 
-(deftest any
-  (is-equiv "foo" s/Any 'Any))
+  (testing "any"
+    (is-equiv "foo" s/Any 'Any))
 
-(deftest schema-pred
-  (is-equiv :foo s/Keyword 'clojure.lang.Keyword))
+  (testing "numbers"
+    (is-equiv 3 s/Number 'java.lang.Number))
+  
+  (testing "schema-pred"
+    (is-equiv :foo s/Keyword 'clojure.lang.Keyword))
+  
+  (testing "hmaps-work"
+    (is-equiv {:foo 5}
+              {:foo Number}
+              '(HMap :mandatory {:foo java.lang.Number})))
+  
+  (testing "maps-work"
+    (is-equiv {:bar "foo"}
+              {Keyword String}
+              (list 'clojure.core.typed/Map 'clojure.lang.Keyword 'java.lang.String)))
+  
+  (testing "nested-hmaps-work"
+    (is-equiv {:foo {:bar "baz"}}
+              {:foo {:bar String}}
+              '(HMap :mandatory {:foo (HMap :mandatory {:bar java.lang.String})})))
+  
+  (testing "mixed-map-hmap"
+    (is-equiv {:foo {:bar "baz"}
+               :not-listed "String"}
+              {:foo {:bar String}
+               s/Keyword s/Any}
+              '(HMap :mandatory {:foo (HMap :mandatory {:bar java.lang.String})}))))
 
-(deftest hmaps-work
-  (let [v {:foo 5}
-        s {:foo Number}
-        t '(HMap :mandatory {:foo java.lang.Number})]
-    (is-equiv v s t)))
 
-(deftest maps-work
-  (let [v {:bar "foo"}
-        s {Keyword String}
-        t (list 'clojure.core.typed/Map 'clojure.lang.Keyword 'java.lang.String)]
-    (is-equiv v s t)))
 
-(deftest nested-hmaps-work
-  (let [v {:foo {:bar "baz"}}
-        s {:foo {:bar String}}
-        t '(HMap :mandatory {:foo (HMap :mandatory {:bar java.lang.String})})]
-    (is-equiv v s t)))
 
-(deftest mixed-map-hmap
-  (let [v {:foo {:bar "baz"}
-           :not-listed "String"}
-        s {:foo {:bar String}
-           s/Keyword s/Any}
-        t '(HMap :mandatory {:foo (HMap :mandatory {:bar java.lang.String})})]
-    (is-equiv v s t)))
+
+
+
+
+
+
+
+
 
 (deftest optional-keys
-  (let [s {:foo Number
-           (s/optional-key :bar) String}
-        t '(HMap :mandatory {:foo java.lang.Number} :optional {:bar java.lang.String})]
-    (is-equiv {:foo 3} s t)
+  (let [schema {:foo Number
+                (s/optional-key :bar) String}
+        type '(HMap :mandatory {:foo java.lang.Number} :optional {:bar java.lang.String})]
+    (is-equiv {:foo 3}
+              schema
+              type)
     (is-equiv {:foo 3
-               :bar "hello"} s t)))
+               :bar "hello"}
+              schema
+              type)))
 
 (deftest vectors
-  (let [s [{:foo Long}]
-        t '(clojure.core.typed/Vec (HMap :mandatory {:foo Integer}))]
-    (is-equiv [{:foo 3}] s t)))
+  (is-equiv [{:foo 3}]
+            [{:foo Long}]
+            '(clojure.core.typed/Vec (HMap :mandatory {:foo Integer}))))
 
 (deftest real-use-works
   (is (t/check-ns 'circle.schema-typer-def)))
